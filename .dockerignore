@@ -1,0 +1,14 @@
+node_modules
+npm-debug.log
+.env
+.git
+.gitignore
+.DS_Store
+dist/
+build/
+README.md
+DEVOPS_HANDOFF.md
+DATABASE_SCHEMA.md
+docker-compose.yml
+Jenkinsfile
+infrastructure/

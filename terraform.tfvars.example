@@ -1,0 +1,11 @@
+# Copy this file to terraform.tfvars and fill in real values.
+# Never commit terraform.tfvars — it is in .gitignore.
+
+aws_region     = "ap-south-1"
+project_name   = "md-maker"
+your_ip_cidr   = "YOUR_PUBLIC_IP/32"   # find it: curl ifconfig.me
+ssh_public_key = "ssh-ed25519 AAAA... your-key-comment"
+db_name        = "mdmaker"
+db_username    = "mdadmin"
+db_password    = "change-me-strong-password"
+image_tag      = "latest"              # overridden by Jenkins at apply time

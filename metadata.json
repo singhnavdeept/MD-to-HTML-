@@ -1,0 +1,6 @@
+{
+  "name": "Cloud-Native Markdown Platform",
+  "description": "A production-grade platform for automated markdown publishing with microservices, CI/CD, and IaC.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
