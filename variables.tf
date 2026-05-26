@@ -1,7 +1,7 @@
 variable "aws_region" {
   description = "AWS region to deploy into"
   type        = string
-  default     = "ap-south-1"   # Mumbai — closest to India
+  default     = "eu-north-1"   # Stockholm — matches your active AWS CLI profile
 }
 
 variable "project_name" {
@@ -10,35 +10,18 @@ variable "project_name" {
   default     = "md-maker"
 }
 
-variable "image_tag" {
-  description = "Docker image tag (Git commit SHA) — passed in by Jenkins"
+variable "instance_type" {
+  description = "EC2 instance size"
   type        = string
+  default     = "t3.micro"     # Free-tier eligible in eu-north-1
 }
 
 variable "your_ip_cidr" {
-  description = "Your public IP in CIDR notation for SSH access, e.g. 203.0.113.5/32"
+  description = "Your public IP in CIDR notation for SSH/Jenkins access, e.g. 128.185.168.206/32"
   type        = string
 }
 
 variable "ssh_public_key" {
-  description = "Contents of your ~/.ssh/id_rsa.pub (or id_ed25519.pub)"
+  description = "Contents of your local SSH public key (~/.ssh/id_ed25519.pub)"
   type        = string
-}
-
-variable "db_name" {
-  description = "Postgres database name"
-  type        = string
-  default     = "mdmaker"
-}
-
-variable "db_username" {
-  description = "Postgres master username"
-  type        = string
-  default     = "mdadmin"
-}
-
-variable "db_password" {
-  description = "Postgres master password — use a secrets manager or tfvars"
-  type        = string
-  sensitive   = true
 }

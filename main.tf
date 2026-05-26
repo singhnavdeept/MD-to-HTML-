@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# main.tf  —  MD Maker  |  Free-tier EC2 + RDS demo deployment
+# main.tf  —  MD Maker  |  Single EC2 Local Docker Stack Deployment
 # ─────────────────────────────────────────────────────────────────────────────
 
 terraform {
@@ -18,18 +18,14 @@ provider "aws" {
 
 # ─── Data ─────────────────────────────────────────────────────────────────────
 
-data "aws_availability_zones" "available" {
-  state = "available"
-}
-
-# Latest Amazon Linux 2023 AMI (free tier eligible)
-data "aws_ami" "al2023" {
+# Fetch the latest Ubuntu 22.04 LTS AMI in the region
+data "aws_ami" "ubuntu" {
   most_recent = true
-  owners      = ["amazon"]
+  owners      = ["099720109477"] # Canonical
 
   filter {
     name   = "name"
-    values = ["al2023-ami-*-x86_64"]
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
   }
 
   filter {
@@ -38,7 +34,7 @@ data "aws_ami" "al2023" {
   }
 }
 
-# ─── VPC ──────────────────────────────────────────────────────────────────────
+# ─── VPC & Networking ─────────────────────────────────────────────────────────
 
 resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
@@ -53,25 +49,12 @@ resource "aws_internet_gateway" "igw" {
   tags   = { Name = "${var.project_name}-igw" }
 }
 
-# Two public subnets (EC2 lives here — no NAT GW needed, saves ~$32/mo)
 resource "aws_subnet" "public" {
-  count                   = 2
   vpc_id                  = aws_vpc.main.id
-  cidr_block              = cidrsubnet("10.0.0.0/16", 8, count.index)
-  availability_zone       = data.aws_availability_zones.available.names[count.index]
+  cidr_block              = "10.0.1.0/24"
   map_public_ip_on_launch = true
 
-  tags = { Name = "${var.project_name}-public-${count.index}" }
-}
-
-# Two private subnets (RDS only)
-resource "aws_subnet" "private" {
-  count             = 2
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = cidrsubnet("10.0.0.0/16", 8, count.index + 10)
-  availability_zone = data.aws_availability_zones.available.names[count.index]
-
-  tags = { Name = "${var.project_name}-private-${count.index}" }
+  tags = { Name = "${var.project_name}-public" }
 }
 
 resource "aws_route_table" "public" {
@@ -86,43 +69,45 @@ resource "aws_route_table" "public" {
 }
 
 resource "aws_route_table_association" "public" {
-  count          = 2
-  subnet_id      = aws_subnet.public[count.index].id
+  subnet_id      = aws_subnet.public.id
   route_table_id = aws_route_table.public.id
 }
 
 # ─── Security Groups ──────────────────────────────────────────────────────────
 
-# EC2: allow SSH from your IP, HTTP/HTTPS from internet
 resource "aws_security_group" "ec2" {
   name        = "${var.project_name}-ec2-sg"
-  description = "App server"
+  description = "Security group for MD Maker application and Jenkins server"
   vpc_id      = aws_vpc.main.id
 
+  # SSH access: restricted to your IP only
   ingress {
-    description = "SSH"
+    description = "SSH from owner IP"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = [var.your_ip_cidr]   # e.g. "203.0.113.5/32"
+    cidr_blocks = [var.your_ip_cidr]
   }
 
+  # Web App access: open to the world
   ingress {
-    description = "HTTP"
+    description = "HTTP Web App"
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # Jenkins Web UI access: restricted to your IP only
   ingress {
-    description = "HTTPS"
-    from_port   = 443
-    to_port     = 443
+    description = "Jenkins Web UI from owner IP"
+    from_port   = 8080
+    to_port     = 8080
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [var.your_ip_cidr]
   }
 
+  # Outbound access: full internet access (to download packages, pull images, etc.)
   egress {
     from_port   = 0
     to_port     = 0
@@ -133,167 +118,86 @@ resource "aws_security_group" "ec2" {
   tags = { Name = "${var.project_name}-ec2-sg" }
 }
 
-# RDS: only accept connections from EC2 SG
-resource "aws_security_group" "rds" {
-  name        = "${var.project_name}-rds-sg"
-  description = "RDS PostgreSQL"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    description     = "Postgres from EC2"
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.ec2.id]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = { Name = "${var.project_name}-rds-sg" }
-}
-
-# ─── ECR Repository ───────────────────────────────────────────────────────────
-
-resource "aws_ecr_repository" "app" {
-  name                 = var.project_name
-  image_tag_mutability = "MUTABLE"
-
-  image_scanning_configuration {
-    scan_on_push = false   # skip scan to keep it lightweight
-  }
-
-  # Auto-delete old images — keep only last 3 to avoid storage costs
-  lifecycle {
-    ignore_changes = []
-  }
-
-  tags = { Name = var.project_name }
-}
-
-resource "aws_ecr_lifecycle_policy" "app" {
-  repository = aws_ecr_repository.app.name
-
-  policy = jsonencode({
-    rules = [{
-      rulePriority = 1
-      description  = "Keep last 3 images"
-      selection = {
-        tagStatus   = "any"
-        countType   = "imageCountMoreThan"
-        countNumber = 3
-      }
-      action = { type = "expire" }
-    }]
-  })
-}
-
-# ─── IAM: EC2 instance role (ECR pull + CloudWatch logs) ─────────────────────
-
-resource "aws_iam_role" "ec2" {
-  name = "${var.project_name}-ec2-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Action    = "sts:AssumeRole"
-      Effect    = "Allow"
-      Principal = { Service = "ec2.amazonaws.com" }
-    }]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "ecr_readonly" {
-  role       = aws_iam_role.ec2.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
-}
-
-resource "aws_iam_role_policy_attachment" "cloudwatch" {
-  role       = aws_iam_role.ec2.name
-  policy_arn = "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
-}
-
-resource "aws_iam_instance_profile" "ec2" {
-  name = "${var.project_name}-ec2-profile"
-  role = aws_iam_role.ec2.name
-}
-
-# ─── RDS PostgreSQL (free tier: db.t3.micro, 20 GB gp2) ─────────────────────
-
-resource "aws_db_subnet_group" "main" {
-  name       = "${var.project_name}-db-subnet-group"
-  subnet_ids = aws_subnet.private[*].id
-  tags       = { Name = "${var.project_name}-db-subnet-group" }
-}
-
-resource "aws_db_instance" "postgres" {
-  identifier             = "${var.project_name}-db"
-  engine                 = "postgres"
-  engine_version         = "15"
-  instance_class         = "db.t3.micro"   # free tier
-  allocated_storage      = 20              # free tier max
-  storage_type           = "gp2"
-  db_name                = var.db_name
-  username               = var.db_username
-  password               = var.db_password
-  db_subnet_group_name   = aws_db_subnet_group.main.name
-  vpc_security_group_ids = [aws_security_group.rds.id]
-  publicly_accessible    = false
-  skip_final_snapshot    = true            # demo — no snapshot on destroy
-  deletion_protection    = false
-  multi_az               = false           # single-AZ, saves cost
-
-  tags = { Name = "${var.project_name}-db" }
-}
-
-# ─── EC2 Instance (t2.micro, free tier) ──────────────────────────────────────
+# ─── SSH Key Pair ─────────────────────────────────────────────────────────────
 
 resource "aws_key_pair" "deployer" {
   key_name   = "${var.project_name}-key"
   public_key = var.ssh_public_key
 }
 
+# ─── EC2 Instance ─────────────────────────────────────────────────────────────
+
 resource "aws_instance" "app" {
-  ami                    = data.aws_ami.al2023.id
-  instance_type          = "t2.micro"
-  subnet_id              = aws_subnet.public[0].id
+  ami                    = data.aws_ami.ubuntu.id
+  instance_type          = var.instance_type
+  subnet_id              = aws_subnet.public.id
   vpc_security_group_ids = [aws_security_group.ec2.id]
-  iam_instance_profile   = aws_iam_instance_profile.ec2.name
   key_name               = aws_key_pair.deployer.key_name
 
   root_block_device {
-    volume_size = 20   # free tier: up to 30 GB gp2
-    volume_type = "gp2"
+    volume_size = 25   # Free tier allows up to 30 GB
+    volume_type = "gp3"
   }
 
-  # Bootstrap: install Docker, AWS CLI, Nginx on first launch
+  # Bootstrap: swap file, Docker, docker-compose-plugin, Node, Nginx
   user_data = <<-EOF
     #!/bin/bash
     set -e
-    dnf update -y
-    dnf install -y docker nginx awscli
-    systemctl enable docker nginx
-    systemctl start docker nginx
 
-    # Allow ec2-user to run docker
-    usermod -aG docker ec2-user
+    # 1. Configure Swap Space (3GB) to prevent OOM crashes on t2.micro / t3.micro
+    fallocate -l 3G /swapfile
+    chmod 600 /swapfile
+    mkswap /swapfile
+    swapon /swapfile
+    echo '/swapfile none swap sw 0 0' >> /etc/fstab
 
-    # Create articles directory (bind-mounted into container)
+    # 2. Update and install basic dependencies
+    apt-get update -y
+    apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release nginx git
+
+    # 3. Add official Docker repository and install Docker + Compose plugin
+    mkdir -p /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+      $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+    apt-get update -y
+    apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+
+    # Enable and start Docker service
+    systemctl enable docker
+    systemctl start docker
+
+    # Allow ubuntu user to run docker without sudo
+    usermod -aG docker ubuntu
+
+    # 4. Configure directories for MD Maker volume mounts
     mkdir -p /opt/md-maker/raw_articles
-    chown ec2-user:ec2-user /opt/md-maker/raw_articles
+    chown -R ubuntu:ubuntu /opt/md-maker
+
+    # 5. Set up Nginx Reverse Proxy (Port 80 -> Port 3000)
+    cat << 'NGINX_CFG' > /etc/nginx/sites-available/default
+    server {
+        listen 80;
+        server_name _;
+
+        location / {
+            proxy_pass http://127.0.0.1:3000;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade \$http_upgrade;
+            proxy_set_header Connection 'upgrade';
+            proxy_set_header Host \$host;
+            proxy_cache_bypass \$http_upgrade;
+        }
+    }
+    NGINX_CFG
+
+    systemctl restart nginx
   EOF
 
-  tags = { Name = "${var.project_name}-app" }
-
-  # Wait for RDS to be ready before EC2 tries to connect
-  depends_on = [aws_db_instance.postgres]
+  tags = { Name = "${var.project_name}-app-server" }
 }
 
-# Elastic IP so the address doesn't change on stop/start
+# Static IP assignment
 resource "aws_eip" "app" {
   instance = aws_instance.app.id
   domain   = "vpc"
