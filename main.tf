@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# main.tf  —  MD Maker  |  Single EC2 Local Docker Stack Deployment
+# main.tf  —  MD Maker  |  Single EC2 Local Docker Stack Deployment (Default VPC)
 # ─────────────────────────────────────────────────────────────────────────────
 
 terraform {
@@ -16,45 +16,19 @@ provider "aws" {
   region = var.aws_region
 }
 
-# Data source lookup removed to bypass DescribeImages permission limits
+# ─── Data ─────────────────────────────────────────────────────────────────────
 
-# ─── VPC & Networking ─────────────────────────────────────────────────────────
-
-resource "aws_vpc" "main" {
-  cidr_block           = "10.0.0.0/16"
-  enable_dns_support   = true
-  enable_dns_hostnames = true
-
-  tags = { Name = "${var.project_name}-vpc" }
+# Reference the existing Default VPC in the account
+data "aws_vpc" "default" {
+  default = true
 }
 
-resource "aws_internet_gateway" "igw" {
-  vpc_id = aws_vpc.main.id
-  tags   = { Name = "${var.project_name}-igw" }
-}
-
-resource "aws_subnet" "public" {
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.1.0/24"
-  map_public_ip_on_launch = true
-
-  tags = { Name = "${var.project_name}-public" }
-}
-
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.main.id
-
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.igw.id
+# Reference the existing Default Subnets in the Default VPC
+data "aws_subnets" "default" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
   }
-
-  tags = { Name = "${var.project_name}-public-rt" }
-}
-
-resource "aws_route_table_association" "public" {
-  subnet_id      = aws_subnet.public.id
-  route_table_id = aws_route_table.public.id
 }
 
 # ─── Security Groups ──────────────────────────────────────────────────────────
@@ -62,7 +36,7 @@ resource "aws_route_table_association" "public" {
 resource "aws_security_group" "ec2" {
   name        = "${var.project_name}-ec2-sg"
   description = "Security group for MD Maker application and Jenkins server"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = data.aws_vpc.default.id
 
   # SSH access: restricted to your IP only
   ingress {
@@ -102,21 +76,14 @@ resource "aws_security_group" "ec2" {
   tags = { Name = "${var.project_name}-ec2-sg" }
 }
 
-# ─── SSH Key Pair ─────────────────────────────────────────────────────────────
-
-resource "aws_key_pair" "deployer" {
-  key_name   = "${var.project_name}-key"
-  public_key = var.ssh_public_key
-}
-
 # ─── EC2 Instance ─────────────────────────────────────────────────────────────
 
 resource "aws_instance" "app" {
   ami                    = var.ami_id
   instance_type          = var.instance_type
-  subnet_id              = aws_subnet.public.id
+  subnet_id              = data.aws_subnets.default.ids[0]
   vpc_security_group_ids = [aws_security_group.ec2.id]
-  key_name               = aws_key_pair.deployer.key_name
+  key_name               = var.key_pair_name
 
   root_block_device {
     volume_size = 25   # Free tier allows up to 30 GB

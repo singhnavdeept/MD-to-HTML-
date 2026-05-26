@@ -27,7 +27,8 @@ variable "your_ip_cidr" {
   type        = string
 }
 
-variable "ssh_public_key" {
-  description = "Contents of your local SSH public key (~/.ssh/id_ed25519.pub)"
+variable "key_pair_name" {
+  description = "Name of the existing EC2 Key Pair in your AWS console (e.g. md-maker-key)"
   type        = string
+  default     = "md-maker-key"
 }
