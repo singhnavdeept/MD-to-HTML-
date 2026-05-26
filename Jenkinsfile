@@ -41,6 +41,8 @@ pipeline {
                     changeset 'tsconfig.json'
                     changeset 'docker-compose.yml'
                     changeset '.env'
+                    expression { currentBuild.number == 1 }
+                    expression { sh(script: 'docker ps -q --filter name=mdmaker-app-1', returnStdout: true).trim() == '' }
                 }
             }
             stages {
@@ -78,6 +80,7 @@ pipeline {
                     changeset 'tsconfig.json'
                     changeset 'docker-compose.yml'
                     changeset '.env'
+                    expression { currentBuild.number == 1 }
                 }
             }
             steps {
@@ -94,7 +97,7 @@ pipeline {
                     // Retry for up to 30 seconds while server boots up
                     retry(6) {
                         sleep(5)
-                        sh 'curl -sf http://localhost:3000/api/articles || exit 1'
+                        sh 'curl -sf http://host.docker.internal:3000/api/articles || exit 1'
                     }
                 }
             }
