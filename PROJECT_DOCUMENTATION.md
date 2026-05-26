@@ -157,3 +157,68 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ### - [ ] **Phase 5: Production Verification & DNS (Ongoing)**
 * **Elastic IP Association**: Assign a static Elastic IP (EIP) to the EC2 instance so that stopping and starting the instance does not change its public IP.
 * **Domain Name & Webhooks**: Bind a domain name (via Route 53 or DNS provider) and register automated webhooks on GitHub to notify Jenkins (`http://<domain>:8080/github-webhook/`) on code pushes to enable fully automated continuous deployment.
+
+---
+
+## 7. User Manual: How to Publish a New Article
+
+This user manual describes how to prepare, upload, and publish Markdown articles onto the live web platform.
+
+### Step 1: Prepare the Markdown File
+Create a new file with a `.md` extension (e.g., `my-new-post.md`) using your preferred editor (VS Code, Obsidian, nano, etc.).
+
+Add **YAML Frontmatter** at the very top of the file enclosed between `---` triple dashes to define metadata. Ensure you write valid YAML. Below the frontmatter, write your article body using standard Markdown:
+
+```markdown
+---
+title: "Understanding Docker Volume Mounts"
+summary: "A deep dive into Docker persistent storage mechanisms and bind mounts."
+tags: ["Docker", "DevOps", "SysAdmin"]
+---
+
+# Introduction
+This is the beginning of the article body. You can use standard Markdown tags:
+* **Bold text**
+* *Italicized text*
+* Bullet points or tables
+```
+
+### Step 2: Upload the Article to the Server
+To trigger the automated publishing mechanism, the file must be placed in the `/home/ubuntu/MD-to-HTML-/raw_articles/` directory on the EC2 server. You can do this in two ways:
+
+#### Option A: Copy from your local machine via SCP (Recommended)
+Open a terminal on your host machine and copy the file using your SSH private key:
+```cmd
+scp -i "C:\Users\navde\Downloads\mdmakerpem.pem" "C:\path\to\my-new-post.md" ubuntu@43.204.233.55:/home/ubuntu/MD-to-HTML-/raw_articles/
+```
+
+#### Option B: Create directly on the Server via SSH
+1. SSH into the EC2 instance:
+   ```cmd
+   ssh -i "C:\Users\navde\Downloads\mdmakerpem.pem" ubuntu@43.204.233.55
+   ```
+2. Open a text editor (like `nano`) to create the file directly in the watch directory:
+   ```bash
+   nano /home/ubuntu/MD-to-HTML-/raw_articles/my-new-post.md
+   ```
+3. Paste your Markdown content, then press `Ctrl+O` and `Enter` to save, and `Ctrl+X` to exit the editor.
+
+### Step 3: Verify the Upload
+The platform's file watcher will automatically detect and parse the new article immediately. You can check the logs to verify it worked:
+1. Log in to the server:
+   ```bash
+   ssh -i "C:\Users\navde\Downloads\mdmakerpem.pem" ubuntu@43.204.233.55
+   ```
+2. View the container log output:
+   ```bash
+   cd /home/ubuntu/MD-to-HTML-
+   docker compose logs app | tail -n 20
+   ```
+3. Verify that the output shows the processing messages:
+   ```log
+   app-1  | [Processor] New article detected: my-new-post.md
+   app-1  | [Processor] Successfully processed: understanding-docker-volume-mounts
+   ```
+
+### Step 4: Access online
+Open your browser and navigate to **[http://43.204.233.55](http://43.204.233.55)**. Your new article will be displayed on the homepage list and searchable by its tags!
