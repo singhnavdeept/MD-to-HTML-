@@ -1,7 +1,7 @@
 variable "aws_region" {
   description = "AWS region to deploy into"
   type        = string
-  default     = "eu-north-1"   # Stockholm — matches your active AWS CLI profile
+  default     = "ap-south-1"   # Mumbai region
 }
 
 variable "project_name" {
@@ -13,7 +13,13 @@ variable "project_name" {
 variable "instance_type" {
   description = "EC2 instance size"
   type        = string
-  default     = "t3.micro"     # Free-tier eligible in eu-north-1
+  default     = "t2.micro"     # Free-tier eligible
+}
+
+variable "ami_id" {
+  description = "Ubuntu 22.04 LTS AMI ID for ap-south-1"
+  type        = string
+  default     = "ami-03f4fa076d2981b45" # Official Ubuntu 22.04 LTS (x86_64) in ap-south-1
 }
 
 variable "your_ip_cidr" {
