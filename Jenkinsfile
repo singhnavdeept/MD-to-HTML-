@@ -59,8 +59,8 @@ pipeline {
                 stage('Restart Containers') {
                     steps {
                         // Stop old containers and clean volumes if needed, then build and start
-                        sh 'docker-compose down'
-                        sh 'docker-compose up -d --build'
+                        sh 'docker compose down'
+                        sh 'docker compose up -d --build'
                     }
                 }
             }
