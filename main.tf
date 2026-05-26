@@ -16,27 +16,14 @@ provider "aws" {
   region = var.aws_region
 }
 
-# ─── Data ─────────────────────────────────────────────────────────────────────
-
-# Reference the existing Default VPC in the account
-data "aws_vpc" "default" {
-  default = true
-}
-
-# Reference the existing Default Subnets in the Default VPC
-data "aws_subnets" "default" {
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.default.id]
-  }
-}
+# Network querying removed to bypass DescribeVpcs/DescribeSubnets permissions limits
 
 # ─── Security Groups ──────────────────────────────────────────────────────────
 
 resource "aws_security_group" "ec2" {
   name        = "${var.project_name}-ec2-sg"
   description = "Security group for MD Maker application and Jenkins server"
-  vpc_id      = data.aws_vpc.default.id
+  # vpc_id omitted to automatically target Default VPC without querying DescribeVpcs
 
   # SSH access: restricted to your IP only
   ingress {
@@ -81,7 +68,8 @@ resource "aws_security_group" "ec2" {
 resource "aws_instance" "app" {
   ami                    = var.ami_id
   instance_type          = var.instance_type
-  subnet_id              = data.aws_subnets.default.ids[0]
+  availability_zone      = var.aws_availability_zone
+  # subnet_id omitted to automatically target default subnet without querying DescribeSubnets
   vpc_security_group_ids = [aws_security_group.ec2.id]
   key_name               = var.key_pair_name
 

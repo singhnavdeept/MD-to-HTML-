@@ -4,6 +4,12 @@ variable "aws_region" {
   default     = "ap-south-1"   # Mumbai region
 }
 
+variable "aws_availability_zone" {
+  description = "AWS availability zone to deploy into"
+  type        = string
+  default     = "ap-south-1b"
+}
+
 variable "project_name" {
   description = "Prefix for all resource names"
   type        = string
