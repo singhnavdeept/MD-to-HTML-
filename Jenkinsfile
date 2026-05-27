@@ -11,7 +11,10 @@ pipeline {
     }
 
     environment {
-        PROJECT_NAME = 'md-maker'
+        PROJECT_NAME = 'md-to-html-'
+        POSTGRES_USER = 'mdadmin'
+        POSTGRES_PASSWORD = 'mdmaker_prod_pass'
+        POSTGRES_DB = 'mdmaker'
     }
 
     options {
@@ -42,7 +45,7 @@ pipeline {
                     changeset 'docker-compose.yml'
                     changeset '.env'
                     expression { currentBuild.number == 1 }
-                    expression { sh(script: 'docker ps -q --filter name=mdmaker-app-1', returnStdout: true).trim() == '' }
+                    expression { sh(script: "docker ps -q --filter name=${PROJECT_NAME}-app-1", returnStdout: true).trim() == '' }
                 }
             }
             stages {
@@ -58,9 +61,9 @@ pipeline {
                 // ── 2b. Rebuild & Start Containers ───────────────────────────────
                 stage('Restart Containers') {
                     steps {
-                        // Stop old containers and clean volumes if needed, then build and start
-                        sh 'docker compose down'
-                        sh 'docker compose up -d --build'
+                        // Stop old app container and rebuild/start under the target project
+                        sh "docker compose -p ${PROJECT_NAME} down app"
+                        sh "docker compose -p ${PROJECT_NAME} up -d --build app"
                     }
                 }
             }
