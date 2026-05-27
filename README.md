@@ -12,5 +12,9 @@
 2. `npm run dev`
 
 ## Deployment
-- **Docker**: `docker-compose up --build`
-- **Terraform**: `cd infrastructure/terraform && terraform apply`
+- **Docker**: `docker compose up --build` (runs locally or on EC2)
+- **Terraform**: `cd infrastructure/terraform && terraform apply` (codified infra)
+
+## Production Environment
+- **Live Platform**: [http://43.204.233.55](http://43.204.233.55)
+- **Jenkins CI/CD**: [http://43.204.233.55:8080](http://43.204.233.55:8080)
