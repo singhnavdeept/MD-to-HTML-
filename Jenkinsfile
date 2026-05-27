@@ -44,6 +44,7 @@ pipeline {
                     changeset 'tsconfig.json'
                     changeset 'docker-compose.yml'
                     changeset '.env'
+                    changeset 'Jenkinsfile'
                     expression { currentBuild.number == 1 }
                     expression { sh(script: "docker ps -q --filter name=${PROJECT_NAME}-app-1", returnStdout: true).trim() == '' }
                 }
@@ -100,7 +101,7 @@ pipeline {
                     // Retry for up to 30 seconds while server boots up
                     retry(6) {
                         sleep(5)
-                        sh 'curl -sf http://host.docker.internal:3000/api/articles || exit 1'
+                        sh 'curl -sf http://app:3000/api/articles || exit 1'
                     }
                 }
             }
